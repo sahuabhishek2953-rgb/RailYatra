@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://YOUR_BACKEND_RENDER_URL.onrender.com/api/:path*"
+      "destination": "https://railyatra-vcm6.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
