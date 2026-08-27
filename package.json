@@ -1,0 +1,21 @@
+{
+  "name": "railyatra-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RailYatra — Modern Train Tracking and Journey Intelligence Platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "build:types": "npm run build --workspace=packages/types",
+    "build:api": "npm run build --workspace=apps/api",
+    "build:web": "npm run build --workspace=apps/web",
+    "build": "npm run build:types && npm run build:api && npm run build:web"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

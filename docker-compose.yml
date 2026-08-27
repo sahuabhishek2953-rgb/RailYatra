@@ -1,0 +1,38 @@
+services:
+  api:
+    build:
+      context: .
+      target: api-runtime
+    container_name: railyatra-api
+    ports:
+      - "4000:4000"
+    env_file: .env.compose
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: web-runtime
+    container_name: railyatra-web
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: railyatra-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes: {}
+networks:
+  default:
+    name: railyatra-network
