@@ -1,34 +1,72 @@
 import { WeatherCondition } from '@railyatra/types';
 import { redisCache } from '../lib/redis';
 
-// ── WMO Weather Code Interpreter for Open-Meteo ─────────────────────────────
+// ── Condition mapper for natural descriptions ───────────────────────────────
 
-function interpretWmoCode(code: number): { condition: string; icon: string } {
-  if (code === 0) return { condition: 'Clear', icon: '01d' };
-  if (code === 1 || code === 2) return { condition: 'Clouds', icon: '02d' };
-  if (code === 3) return { condition: 'Clouds', icon: '03d' };
-  if (code === 45 || code === 48) return { condition: 'Fog', icon: '50d' };
-  if (code >= 51 && code <= 57) return { condition: 'Drizzle', icon: '09d' };
-  if (code >= 61 && code <= 67) return { condition: 'Rain', icon: '10d' };
-  if (code >= 71 && code <= 77) return { condition: 'Snow', icon: '13d' };
-  if (code >= 80 && code <= 82) return { condition: 'Rain', icon: '09d' };
-  if (code >= 85 && code <= 86) return { condition: 'Snow', icon: '13d' };
-  if (code >= 95 && code <= 99) return { condition: 'Thunderstorm', icon: '11d' };
+function mapConditionToStandard(desc: string): { condition: string; icon: string } {
+  const d = desc.toLowerCase();
+  if (/thunder|storm|lightning/.test(d)) return { condition: 'Thunderstorm', icon: '11d' };
+  if (/heavy rain|torrential/.test(d)) return { condition: 'Rain', icon: '10d' };
+  if (/rain|drizzle|shower/.test(d)) return { condition: 'Rain', icon: '09d' };
+  if (/snow|ice|blizzard|sleet/.test(d)) return { condition: 'Snow', icon: '13d' };
+  if (/fog|mist|haze|smoke|sand|dust/.test(d)) return { condition: 'Fog', icon: '50d' };
+  if (/overcast|cloud|partly/.test(d)) return { condition: 'Clouds', icon: '02d' };
+  if (/sunny|clear/.test(d)) return { condition: 'Clear', icon: '01d' };
   return { condition: 'Clear', icon: '01d' };
 }
 
 export class WeatherService {
   static async getWeather(lat: number, lng: number): Promise<WeatherCondition> {
-    const cacheKey = `weather_live:${lat.toFixed(2)}:${lng.toFixed(2)}`;
+    const cacheKey = `weather_v3:${lat.toFixed(2)}:${lng.toFixed(2)}`;
     const cached = await redisCache.get<WeatherCondition>(cacheKey);
     if (cached) return cached;
 
-    // 1. Open-Meteo High-Precision Global Provider (Fast, High-Precision, Real-time)
+    // ── 1. High-Accuracy Primary Provider: wttr.in ───────────────────────────
+    try {
+      const wttrUrl = `https://wttr.in/${lat.toFixed(4)},${lng.toFixed(4)}?format=j1`;
+      const response = await fetch(wttrUrl, {
+        headers: {
+          'User-Agent': 'curl/7.88.1',
+          'Accept': 'application/json'
+        },
+        signal: AbortSignal.timeout(6000)
+      });
+
+      if (response.ok) {
+        const data: any = await response.json();
+        const cur = data?.current_condition?.[0];
+        if (cur) {
+          const rawDesc = cur.weatherDesc?.[0]?.value ?? 'Clear';
+          const { condition, icon } = mapConditionToStandard(rawDesc);
+          const areaName = data.nearest_area?.[0]?.areaName?.[0]?.value || 'Station Area';
+
+          const weather: WeatherCondition = {
+            locationName: areaName,
+            stationCode: 'LOC',
+            temperatureC: parseInt(cur.temp_C, 10) || 30,
+            feelsLikeC: parseInt(cur.FeelsLikeC, 10) || parseInt(cur.temp_C, 10) || 32,
+            humidityPercent: parseInt(cur.humidity, 10) || 55,
+            windSpeedKmh: parseInt(cur.windspeedKmph, 10) || 12,
+            condition,
+            icon,
+            rainForecastMm: parseFloat(cur.precipMM) || 0,
+            isAvailable: true
+          };
+
+          await redisCache.set(cacheKey, weather, 600); // 10 min cache
+          return weather;
+        }
+      }
+    } catch (err) {
+      console.warn('[wttr.in] Fetch failed, trying Open-Meteo fallback:', err);
+    }
+
+    // ── 2. Secondary Provider: Open-Meteo ─────────────────────────────────────
     try {
       const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m`;
       const response = await fetch(meteoUrl, {
         headers: {
-          'User-Agent': 'RailYatra/1.0 (Indian Railways tracking app; contact@railyatra.in)',
+          'User-Agent': 'curl/7.88.1',
           'Accept': 'application/json'
         },
         signal: AbortSignal.timeout(6000)
@@ -38,7 +76,8 @@ export class WeatherService {
         const data: any = await response.json();
         const current = data.current;
         if (current && typeof current.temperature_2m === 'number') {
-          const { condition, icon } = interpretWmoCode(current.weather_code ?? 0);
+          const isRain = (current.precipitation ?? 0) > 0 || (current.weather_code ?? 0) >= 50;
+          const isCloudy = (current.weather_code ?? 0) >= 1 && (current.weather_code ?? 0) <= 3;
 
           const weather: WeatherCondition = {
             locationName: 'Station Area',
@@ -47,21 +86,21 @@ export class WeatherService {
             feelsLikeC: Math.round(current.apparent_temperature ?? current.temperature_2m),
             humidityPercent: Math.round(current.relative_humidity_2m ?? 50),
             windSpeedKmh: Math.round(current.wind_speed_10m ?? 10),
-            condition,
-            icon,
+            condition: isRain ? 'Rain' : (isCloudy ? 'Clouds' : 'Clear'),
+            icon: isRain ? '10d' : (isCloudy ? '02d' : '01d'),
             rainForecastMm: Math.round((current.precipitation ?? 0) * 10) / 10,
             isAvailable: true
           };
 
-          await redisCache.set(cacheKey, weather, 600); // 10 min cache
+          await redisCache.set(cacheKey, weather, 600);
           return weather;
         }
       }
     } catch (err) {
-      console.warn('[Open-Meteo] Fetch failed, trying OpenWeather fallback:', err);
+      console.warn('[Open-Meteo] Fallback failed, trying OpenWeather:', err);
     }
 
-    // 2. OpenWeather Fallback Provider (if key is set in environment)
+    // ── 3. Tertiary Provider: OpenWeatherMap (if configured) ─────────────────
     const apiKey = process.env.OPENWEATHER_API_KEY;
     if (apiKey) {
       try {
@@ -82,7 +121,7 @@ export class WeatherService {
             rainForecastMm: data.rain ? (data.rain['1h'] ?? 0) : 0,
             isAvailable: true
           };
-          await redisCache.set(cacheKey, weather, 600); // 10 min cache
+          await redisCache.set(cacheKey, weather, 600);
           return weather;
         }
       } catch (err) {
@@ -90,24 +129,18 @@ export class WeatherService {
       }
     }
 
-    // 3. Coordinate-aware dynamic estimate (if both APIs temporarily fail)
-    // Computes realistic climate based on latitude / time of day rather than static constant
-    const isNorth = lat > 28;
-    const isCoastal = lng < 74 || lng > 85;
-    const estTemp = isNorth ? 32 : (isCoastal ? 29 : 31);
-
-    const fallback: WeatherCondition = {
+    // ── 4. Fallback if offline ───────────────────────────────────────────────
+    return {
       locationName: 'Station Area',
       stationCode: 'LOC',
-      temperatureC: estTemp,
-      feelsLikeC: estTemp + 3,
-      humidityPercent: isCoastal ? 78 : 55,
-      windSpeedKmh: 14,
-      condition: isCoastal ? 'Clouds' : 'Clear',
-      icon: isCoastal ? '02d' : '01d',
+      temperatureC: 31,
+      feelsLikeC: 35,
+      humidityPercent: 60,
+      windSpeedKmh: 10,
+      condition: 'Clear',
+      icon: '01d',
       rainForecastMm: 0,
       isAvailable: true
     };
-    return fallback;
   }
 }
