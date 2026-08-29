@@ -61,8 +61,8 @@ export class WeatherService {
       console.warn('[Open-Meteo] Fetch failed, trying OpenWeather fallback:', err);
     }
 
-    // 2. OpenWeather Fallback Provider
-    const apiKey = process.env.OPENWEATHER_API_KEY || '80526297298d1ac36b00fad633487857';
+    // 2. OpenWeather Fallback Provider (if key is set in environment)
+    const apiKey = process.env.OPENWEATHER_API_KEY;
     if (apiKey) {
       try {
         const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&units=metric&appid=${apiKey}`;
