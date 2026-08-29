@@ -1,5 +1,6 @@
 services:
   api:
+    image: abhisahu786/railyatra-api:latest
     build:
       context: .
       target: api-runtime
@@ -15,6 +16,7 @@ services:
     restart: unless-stopped
 
   web:
+    image: abhisahu786/railyatra-web:latest
     build:
       context: .
       target: web-runtime

@@ -13,6 +13,7 @@
 [![PWA Ready](https://img.shields.io/badge/PWA-Ready-orange?style=flat-square&logo=pwa&logoColor=white)](https://web.dev/progressive-web-apps/)
 [![Render](https://img.shields.io/badge/Render-Backend_Live-46E3B7?style=flat-square&logo=render&logoColor=white)](https://railyatra-vcm6.onrender.com)
 [![Vercel](https://img.shields.io/badge/Vercel-Frontend_Live-black?style=flat-square&logo=vercel&logoColor=white)](https://vercel.com)
+[![Docker Hub](https://img.shields.io/badge/Docker_Hub-abhisahu786-2496ED?style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/u/abhisahu786)
 
 <p align="center">
   A high-performance, real-time train tracking platform for Indian Railways featuring interactive vector maps, dynamic terrain elevation charts, live speed computation, nearby geographical discoveries, and arrival geofencing.
@@ -181,6 +182,18 @@ Visit **`http://localhost:3000`** in your browser.
 2. Set **Root Directory** to `apps/web`.
 3. Set **Framework Preset** to `Vite`.
 4. Deploy! All API requests will automatically proxy through `apps/web/vercel.json`.
+
+### 🐳 Run with Docker (1-Command via Docker Hub)
+Pull and run the pre-built images directly from Docker Hub:
+```bash
+# Pull official images from Docker Hub
+docker pull abhisahu786/railyatra-api:latest
+docker pull abhisahu786/railyatra-web:latest
+
+# Run complete stack (Web + API + Redis)
+docker compose up -d
+```
+Access Frontend at `http://localhost:5173` and API at `http://localhost:4000`.
 
 ---
 
